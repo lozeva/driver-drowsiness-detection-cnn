@@ -10,8 +10,8 @@ generators for training.
 import re
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 
 
 # 1. Building the file index
@@ -115,39 +115,80 @@ def subject_level_split(
     than one split, which would otherwise let the model memorize
     subject-specific features instead of learning to generalize.
 
+    In DDD, each subject belongs entirely to one class (drowsy-only or
+    non-drowsy-only), and subjects vary widely in how many images they
+    contribute (from ~109 to ~1,749). A plain subject-count stratified
+    split can therefore still produce an image-level class imbalance
+    across splits by chance. This function assigns subjects greedily,
+    per class, to whichever split currently has the largest image-count
+    deficit relative to its target ratio - balancing both subject count
+    and image count per class across train/val/test.
+
     Parameters
     ----------
     drowsiness_dataset_df : pd.DataFrame
-        Output of build_file_index(), must contain a 'subject_id' column.
+        Output of build_file_index(), must contain 'subject_id' and
+        'drowsiness_label' columns.
     test_size : float
-        Fraction of SUBJECTS (not images) to hold out for testing.
+        Target fraction of IMAGES (per class) to hold out for testing.
     val_size : float
-        Fraction of the remaining (non-test) subjects to hold out for
-        validation.
+        Target fraction of IMAGES (per class) to hold out for validation.
     random_state : int
-        Seed for reproducibility.
+        Seed for reproducibility (used to shuffle subjects within each
+        class before the size-based greedy assignment).
 
     Returns
     -------
     (train_subjects_df, val_subjects_df, test_subjects_df) : tuple of pd.DataFrame
+        Image-level DataFrames, one row per image, filtered to the
+        subjects assigned to each split.
     """
-    unique_subject_ids = drowsiness_dataset_df["subject_id"].unique()
+    train_size = 1.0 - test_size - val_size
+    split_ratios = {"train": train_size, "val": val_size, "test": test_size}
 
-    train_val_subject_ids, test_subject_ids = train_test_split(
-        unique_subject_ids, test_size=test_size, random_state=random_state
+    subject_summary_df = (
+        drowsiness_dataset_df.groupby("subject_id")
+        .agg(total_images=("drowsiness_label", "count"), drowsy_ratio=("drowsiness_label", "mean"))
+        .reset_index()
     )
-    train_subject_ids, val_subject_ids = train_test_split(
-        train_val_subject_ids, test_size=val_size, random_state=random_state
-    )
+    subject_summary_df["subject_class"] = subject_summary_df["drowsy_ratio"].round().astype(int)
+
+    rng = np.random.RandomState(random_state)
+    assigned_subjects = {name: [] for name in split_ratios}
+
+    for class_value in subject_summary_df["subject_class"].unique():
+        class_subjects_df = subject_summary_df[
+            subject_summary_df["subject_class"] == class_value
+        ].sample(frac=1, random_state=rng)
+        class_subjects_df = class_subjects_df.sort_values("total_images", ascending=False)
+
+        class_total_images = class_subjects_df["total_images"].sum()
+        target_images = {
+            name: ratio * class_total_images for name, ratio in split_ratios.items()
+        }
+        # Tracked PER CLASS (reset for every class_value), not accumulated
+        # across classes - otherwise the second class's deficits are computed
+        # against images already assigned to the first class, which corrupts
+        # the per-class balance this function is meant to achieve.
+        assigned_images_this_class = {name: 0 for name in split_ratios}
+
+        for _, subject_row in class_subjects_df.iterrows():
+            deficits = {
+                name: target_images[name] - assigned_images_this_class[name]
+                for name in split_ratios
+            }
+            best_split = max(deficits, key=deficits.get)
+            assigned_subjects[best_split].append(subject_row["subject_id"])
+            assigned_images_this_class[best_split] += subject_row["total_images"]
 
     train_subjects_df = drowsiness_dataset_df[
-        drowsiness_dataset_df["subject_id"].isin(train_subject_ids)
+        drowsiness_dataset_df["subject_id"].isin(assigned_subjects["train"])
     ].reset_index(drop=True)
     val_subjects_df = drowsiness_dataset_df[
-        drowsiness_dataset_df["subject_id"].isin(val_subject_ids)
+        drowsiness_dataset_df["subject_id"].isin(assigned_subjects["val"])
     ].reset_index(drop=True)
     test_subjects_df = drowsiness_dataset_df[
-        drowsiness_dataset_df["subject_id"].isin(test_subject_ids)
+        drowsiness_dataset_df["subject_id"].isin(assigned_subjects["test"])
     ].reset_index(drop=True)
 
     _assert_no_subject_overlap(train_subjects_df, val_subjects_df, test_subjects_df)
