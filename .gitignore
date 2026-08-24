@@ -1,21 +1,7 @@
 # Data
 data/raw/*
-data/processed/*
 !data/raw/.gitkeep
-!data/processed/train/
-!data/processed/val/
-!data/processed/test/
-!data/processed/train/.gitkeep
-!data/processed/val/.gitkeep
-!data/processed/test/.gitkeep
 .virtual_documents/
-
-# Trained model weights
-models/*.h5
-models/*.keras
-models/*.hdf5
-*.h5
-*.keras
 
 # Jupyter
 .ipynb_checkpoints/
