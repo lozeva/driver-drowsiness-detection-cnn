@@ -60,6 +60,7 @@ def plot_training_curves(custom_cnn_history, mobilenetv2_history):
     axes[1, 1].legend()
 
     plt.tight_layout()
+    plt.savefig('reports/figures/training_curves.png', dpi=150, bbox_inches='tight')
     plt.show()
 
 
@@ -101,6 +102,7 @@ def plot_confusion_matrices(true_labels, custom_cnn_predictions, mobilenetv2_pre
     axes[1].set_ylabel('Actual')
 
     plt.tight_layout()
+    plt.savefig('reports/figures/confusion_matrices.png', dpi=150, bbox_inches='tight')
     plt.show()
 
 

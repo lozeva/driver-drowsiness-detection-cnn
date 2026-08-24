@@ -314,4 +314,4 @@ def build_data_generators(
         shuffle=False,
     )
 
-    return train_generator, val_generator, test_generatorс
+    return train_generator, val_generator, test_generator
