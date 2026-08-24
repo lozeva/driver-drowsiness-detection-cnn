@@ -242,7 +242,7 @@ def build_data_generators(
     train_subjects_df: pd.DataFrame,
     val_subjects_df: pd.DataFrame,
     test_subjects_df: pd.DataFrame,
-    image_size: tuple[int, int] = (145, 145),
+    image_size: tuple[int, int] = (160, 160),
     batch_size: int = 32,
 ):
     """
@@ -314,4 +314,4 @@ def build_data_generators(
         shuffle=False,
     )
 
-    return train_generator, val_generator, test_generator
+    return train_generator, val_generator, test_generatorс
